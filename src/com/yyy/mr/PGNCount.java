@@ -1,59 +1,87 @@
 package com.yyy.mr;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.util.StringTokenizer;
+import java.io.InputStream;
 
-import org.apache.commons.httpclient.URI;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.hdfs.client.HdfsUtils;
-import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.Text;
-import org.apache.hadoop.mapred.Counters.Counter;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.hadoop.mapreduce.Reducer;
-import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
+import org.apache.log4j.Logger;
 
 import com.yyy.utils.HadoopUtils;
 
+import chesspresso.game.Game;
+import chesspresso.pgn.PGNReader;
+
 public class PGNCount {
 
+	private static Logger log = Logger.getLogger(PGNCount.class);
+
 	public static enum Counters {
-		LINE_NUMBER, WORDS_NUMBER
+		ROUND_NUMBER
 	};
 
-	public static class TokenizerMapper extends Mapper<Object, Text, Text, IntWritable> {
-
-		private final static IntWritable one = new IntWritable(1);
-		private Text word = new Text();
+	public static class TokenizerMapper extends Mapper<Object, Text, Text, Text> {
+		private final static Text oneAndRadio = new Text("1" + "\t" + "0");
 
 		public void map(Object key, Text value, Context context) throws IOException, InterruptedException {
-			StringTokenizer itr = new StringTokenizer(value.toString());
-			while (itr.hasMoreTokens()) {
-				word.set(itr.nextToken());
-				context.write(word, one);
-			}
-			context.getCounter(Counters.LINE_NUMBER).increment(1);
+			InputStream inputStream = new ByteArrayInputStream(value.getBytes());
+			PGNReader pgnReader = new PGNReader(inputStream, "tmp name");
 
+			Game game;
+			try {
+				while (true) {
+					game = pgnReader.parseGame();
+					if (game == null) {
+						break;
+					}
+					// 0->white,1->draw,2->black
+					switch (game.getResult()) {
+					case 0:
+						context.write(new Text("White"), oneAndRadio);
+						break;
+					case 1:
+						context.write(new Text("Draw"), oneAndRadio);
+						break;
+					case 2:
+						context.write(new Text("Black"), oneAndRadio);
+						break;
+					default:
+						log.error("switch/case into default");
+						break;
+					}
+					context.getCounter(Counters.ROUND_NUMBER).increment(1);
+				}
+			} catch (Exception e) {
+				log.error(e.getMessage());
+			}
 		}
 	}
 
-	public static class IntSumReducer extends Reducer<Text, IntWritable, Text, IntWritable> {
-		private IntWritable result = new IntWritable();
+	public static class IntSumReducer extends Reducer<Text, Text, Text, Text> {
 
-		public void reduce(Text key, Iterable<IntWritable> values, Context context)
-				throws IOException, InterruptedException {
-			context.getCounter(Counters.WORDS_NUMBER).increment(1);
+		public void reduce(Text key, Iterable<Text> values, Context context) throws IOException, InterruptedException {
+
+			Long lTotal = context.getCounter(Counters.ROUND_NUMBER).getValue();
+
+			double radio = 0.0;
+			int count = 0;
 			int sum = 0;
-			for (IntWritable val : values) {
-				sum += val.get();
-				System.out.println(key + "-" + val);
+			for (Text val : values) {
+				sum += Integer.valueOf(val.toString().split("\t")[0]);
+				if (val.toString().split("\t")[1].equals("0")) {
+					radio += 1.0 / (double) lTotal;
+				} else {
+					radio += Double.valueOf(val.toString().split("\t")[1]);
+				}
+				count++;
 			}
-			result.set(sum);
-			context.write(key, result);
+			context.write(key, new Text(String.valueOf(sum + "\t" + radio)));
 
 		}
 	}
@@ -70,9 +98,9 @@ public class PGNCount {
 		job.setCombinerClass(IntSumReducer.class);
 		job.setReducerClass(IntSumReducer.class);
 		job.setOutputKeyClass(Text.class);
-		job.setOutputValueClass(IntWritable.class);
+		job.setOutputValueClass(Text.class);
 		job.setInputFormatClass(WholeFileInputFormat.class);
-		WholeFileInputFormat.addInputPath(job, new Path("hdfs://128.6.5.42:9000/ficsgamesdb_small_201503.pgn"));
+		WholeFileInputFormat.addInputPath(job, new Path("hdfs://128.6.5.42:9000/pgn/*"));
 		FileOutputFormat.setOutputPath(job, new Path("hdfs://128.6.5.42:9000/out"));
 		System.out.println((job.waitForCompletion(true) ? 0 : 1));
 	}

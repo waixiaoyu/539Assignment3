@@ -13,10 +13,16 @@ public class ReadPGN {
 	public static void main(String[] args) throws IOException, PGNSyntaxError {
 
 		PGNReader pgnReader = new PGNReader(new FileInputStream(filename), filename);
-		Game game = pgnReader.parseGame();
-		System.out.println(game.getBlack());
-		game = pgnReader.parseGame();
-		System.out.println(game.getBlack());
+		Game game ;
+
+		while (true) {
+			game = pgnReader.parseGame();
+			if (game == null) {
+				break;
+			}
+			//0->white,1->draw,2->black
+			System.out.println(game.getResult());
+		}
 
 	}
 }
