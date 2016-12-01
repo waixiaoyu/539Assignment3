@@ -13,7 +13,7 @@ public class HadoopUtils {
 		conf = cf;
 		FileSystem fs = outputPath.getFileSystem(conf);
 		if (fs.exists(outputPath)) {
-			System.out.println("Deleting output path before proceeding.");
+			System.out.println("Deleting output path before proceeding." + outputPath.getName());
 			fs.delete(outputPath, true);
 		}
 	}

@@ -1,4 +1,4 @@
-package com.yyy.mr;
+package com.yyy.inputformat;
 
 import java.io.IOException;
 

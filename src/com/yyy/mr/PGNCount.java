@@ -13,6 +13,7 @@ import org.apache.hadoop.mapreduce.Reducer;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 import org.apache.log4j.Logger;
 
+import com.yyy.inputformat.WholeFileInputFormat;
 import com.yyy.utils.HDFSUtils;
 import com.yyy.utils.HadoopUtils;
 
@@ -22,6 +23,8 @@ import chesspresso.pgn.PGNReader;
 public class PGNCount {
 
 	private static Logger log = Logger.getLogger(PGNCount.class);
+
+	private static String tempFilePath = "";
 
 	private static final String host = "128.6.5.42";
 	private static final String port = "9000";
@@ -44,6 +47,7 @@ public class PGNCount {
 						break;
 					}
 					// 0->white,1->draw,2->black
+					// key=Write Black or Draw, value=1
 					switch (game.getResult()) {
 					case 0:
 						context.write(new Text("White"), one);
@@ -68,10 +72,9 @@ public class PGNCount {
 		@Override
 		protected void cleanup(Mapper<Object, Text, Text, Text>.Context context)
 				throws IOException, InterruptedException {
-			// TODO Auto-generated method stub
 			super.cleanup(context);
 			HDFSUtils.write(context.getConfiguration(),
-					String.valueOf(context.getCounter(Counters.ROUND_NUMBER).getValue()));
+					String.valueOf(context.getCounter(Counters.ROUND_NUMBER).getValue()), tempFilePath);
 		}
 
 	}
@@ -93,9 +96,8 @@ public class PGNCount {
 
 		@Override
 		protected void setup(Reducer<Text, Text, Text, Text>.Context context) throws IOException, InterruptedException {
-			// TODO Auto-generated method stub
 			super.setup(context);
-			String str = HDFSUtils.read(context.getConfiguration(), "hdfs://" + host + ":" + port + "/temp");
+			String str = HDFSUtils.read(context.getConfiguration(), tempFilePath);
 			context.getCounter(Counters.ROUND_NUMBER).setValue(Long.valueOf(str));
 		}
 
@@ -120,8 +122,12 @@ public class PGNCount {
 
 		HadoopUtils.deleteOutputDirectory(conf, new Path("hdfs://" + host + ":9000/out"));
 
+		// Following two lines are used for hdfs i/o normally, when developing
+		// remoting.
 		conf.set("mapred.jop.tracker", "hdfs://" + host + ":9001");
 		conf.set("fs.default.name", "hdfs://" + host + ":9000");
+
+		tempFilePath = "hdfs://" + host + ":9000/temp" + String.valueOf(System.currentTimeMillis());
 
 		Job job = Job.getInstance(conf, "pgn count");
 		job.setJarByClass(PGNCount.class);
@@ -132,7 +138,10 @@ public class PGNCount {
 		job.setOutputValueClass(Text.class);
 		job.setInputFormatClass(WholeFileInputFormat.class);
 		WholeFileInputFormat.addInputPath(job, new Path("hdfs://" + host + ":9000/pgn/*"));
-		FileOutputFormat.setOutputPath(job, new Path("hdfs://" + host + ":9000/out"));
+		FileOutputFormat.setOutputPath(job, new Path("hdfs://" + host + ":9000/out1"));
 		System.out.println((job.waitForCompletion(true) ? 0 : 1));
+
+		// delete the temp file
+		HadoopUtils.deleteOutputDirectory(conf, new Path(tempFilePath));
 	}
 }

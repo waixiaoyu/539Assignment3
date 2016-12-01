@@ -25,19 +25,19 @@ public class HDFSUtils {
 		return conf;
 	}
 
-	public static void write(String str) throws IOException {
-		write(getConfiguration(), str);
+	public static void write(String str,String filePath) throws IOException {
+		write(getConfiguration(), str,filePath);
 	}
 
 	public static String read(String filePath) throws IOException {
 		return read(getConfiguration(), filePath);
 	}
 
-	public static void write(Configuration cf, String str) throws IOException {
+	public static void write(Configuration cf, String str,String filepath) throws IOException {
 		Configuration conf = cf;
 		byte[] buff = str.getBytes();
 		FileSystem hdfs = FileSystem.get(conf);
-		Path dfs = new Path("hdfs://" + host + ":" + port + "/temp");
+		Path dfs = new Path(filepath);
 		FSDataOutputStream outputStream = hdfs.create(dfs);
 		outputStream.write(buff, 0, buff.length);
 		hdfs.close();
